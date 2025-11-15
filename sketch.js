@@ -178,51 +178,72 @@ class Label {
   }
   show() {
     push();
-    // position label in world
-    translate(this.x, this.y, this.z);
-    rotateY(-angleY);
-    rotateX(-angleX);
-    scale(1/zoom);
 
-    // disable depth test to draw icon/text on top
+    // переход в мировую позицию метки
+    translate(this.x, this.y, this.z);
+
+    // Billboard: развернуть к камере
+    // достаточно выровнять только Y-угол!
+    rotateY(-angleY);
+
+    // не трогаем rotateX — он ломает оси текста и иконки
+    // rotateX(-angleX);  // УДАЛЕНО
+
+    // масштаб иконки/текста зависит от zoom
+    scale(1 / zoom);
+
+    // отключаем depth test, чтобы метки рисовались поверх
     if (drawingContext && drawingContext.disable) {
-      try { drawingContext.disable(drawingContext.DEPTH_TEST); } catch(e){ /* ignore */ }
+        drawingContext.disable(drawingContext.DEPTH_TEST);
     }
 
     noStroke();
-    fill(this.clr.r, this.clr.g, this.clr.b);
     textSize(17);
     textAlign(CENTER, TOP);
 
+    // вертикальный отступ для текста
+    let textOffset = this.icon ? this.icon.height / 1.5 + 6 : 20;
+
+    // 1) Рисуем иконку
+    if (this.icon) {
+        imageMode(CENTER);
+
+        // Рисуем строго на плоскости XY
+        image(
+            this.icon,
+            0,         // x
+            0,         // y
+            this.icon.width / 1.5,
+            this.icon.height / 1.5
+        );
+    }
+
+    // 2) Рисуем текст
+    fill(this.clr.r, this.clr.g, this.clr.b);
+
     if (zoom >= 2) {
-      for (let dx = -0.25; dx <= 0.25; dx += 0.25) {
-        for (let dy = -0.25; dy <= 0.25; dy += 0.25) {
-          if (dx !== 0 || dy !== 0) {
-            push(); translate(dx, dy, 0);
-            if (this.icon && this.icon.width) text(this.name, 0, this.icon.height - 15); else text(this.name, 0, -15);
-            pop();
-          }
+        for (let dx = -0.25; dx <= 0.25; dx += 0.25) {
+            for (let dy = -0.25; dy <= 0.25; dy += 0.25) {
+                if (dx !== 0 || dy !== 0) {
+                    push();
+                    translate(dx * 2, dy * 2, 0); // лёгкий «обвод»
+                    text(this.name, 0, textOffset);
+                    pop();
+                }
+            }
         }
-      }
-      if (this.icon && this.icon.height) text(this.name, 0, this.icon.height - 15); else text(this.name, 0, -15);
     }
 
-    if (this.icon && this.icon.width) {
-      imageMode(CENTER);
-      // safeguard icon sizes
-      let iw = (this.icon.width || 32) / 1.5;
-      let ih = (this.icon.height || 32) / 1.5;
-      image(this.icon, 0, 0, iw, ih);
-    }
+    text(this.name, 0, textOffset);
 
-    // restore depth test
+    // вернуть Z-буфер
     if (drawingContext && drawingContext.enable) {
-      try { drawingContext.enable(drawingContext.DEPTH_TEST); } catch(e){ /* ignore */ }
+        drawingContext.enable(drawingContext.DEPTH_TEST);
     }
 
-    scale(zoom);
     pop();
-  }
+}
+
 }
 
 // -----------------------------
