@@ -1,4 +1,4 @@
-// main.js — исправленный полный вариант (твой код + баг-фиксы + HUD для меток)
+// main.js — исправленный полный вариант (твой код + баг-фиксы + HUD для меток + world->screen)
 
 // -----------------------------
 // Global state
@@ -35,6 +35,66 @@ let waters = [];
 
 // Icon cache for label types
 let iconCache = {};
+
+// -----------------------------
+// Utility: multiply projection * modelview (column-major arrays)
+// -----------------------------
+function multMat4(a, b) {
+  // a and b are length-16 arrays (column-major)
+  const out = new Array(16).fill(0);
+  // out = a * b (matrix multiplication)
+  for (let col = 0; col < 4; col++) {
+    for (let row = 0; row < 4; row++) {
+      let sum = 0;
+      for (let k = 0; k < 4; k++) {
+        // index in column-major: element(row, col) -> array[col*4 + row]
+        sum += a[k * 4 + row] * b[col * 4 + k];
+      }
+      out[col * 4 + row] = sum;
+    }
+  }
+  return out;
+}
+
+// -----------------------------
+// Convert world (x,y,z) to screen pixels reliably (WEBGL)
+// uses renderer.uPMatrix.mat4 and renderer.uMVMatrix.mat4
+// -----------------------------
+function worldToScreen(x, y, z) {
+  // get current renderer (global mode)
+  const renderer = (typeof this !== 'undefined' && this._renderer) ? this._renderer : (p5 && p5.instance && p5.instance._renderer ? p5.instance._renderer : null);
+  if (!renderer || !renderer.uPMatrix || !renderer.uMVMatrix) {
+    // fallback: mark as offscreen
+    return { x: NaN, y: NaN, z: Infinity };
+  }
+
+  const pMat = renderer.uPMatrix.mat4; // projection (column-major)
+  const mvMat = renderer.uMVMatrix.mat4; // modelview (column-major)
+
+  // MVP = P * MV
+  const mvp = multMat4(pMat, mvMat);
+
+  // multiply vector (column-major usage)
+  // clip-space coords:
+  const nx = mvp[0] * x + mvp[4] * y + mvp[8] * z + mvp[12];
+  const ny = mvp[1] * x + mvp[5] * y + mvp[9] * z + mvp[13];
+  const nz = mvp[2] * x + mvp[6] * y + mvp[10] * z + mvp[14];
+  const nw = mvp[3] * x + mvp[7] * y + mvp[11] * z + mvp[15];
+
+  if (!isFinite(nw) || Math.abs(nw) < 1e-8) {
+    return { x: NaN, y: NaN, z: Infinity };
+  }
+
+  const ndcX = nx / nw;
+  const ndcY = ny / nw;
+  const ndcZ = nz / nw; // depth
+
+  // convert NDC (-1..1) to pixels (0..width, 0..height). note Y flips.
+  const sx = (ndcX * 0.5 + 0.5) * width;
+  const sy = (-ndcY * 0.5 + 0.5) * height;
+
+  return { x: sx, y: sy, z: ndcZ };
+}
 
 // -----------------------------
 // Classes (как в твоём варианте)
@@ -179,8 +239,7 @@ class Label {
       default: return {r:255,g:255,b:255};
     }
   }
-  // NOTE: Label.show is no longer used to render HUD — rendering is done by drawLabelsHUD().
-  // Keeping the method in case you use it elsewhere.
+  // NOTE: Label.show is no longer used to render HUD — rendering is done by draw() HUD code.
   show() {
     // fallback if someone calls it: simple world-space billboard (not used in optimized HUD)
     push();
@@ -268,7 +327,7 @@ function setup() {
   read_json_underlays();
   read_json_waters();
 
-  // debug: list loaded icons
+  // debug: list loaded icons (may be empty until images finish loading)
   console.log('Icons preloaded:', Object.keys(iconCache));
 }
 
@@ -277,6 +336,9 @@ function setup() {
 // -----------------------------
 function draw() {
   background(43, 52, 85);
+
+  // clamp zoom (avoid extreme values that kill perf)
+  zoom = constrain(zoom, 0.2, 8.0);
 
   // -------------------------
   // 3D scene render
@@ -293,15 +355,12 @@ function draw() {
   // -- compute screen positions for labels while transforms are active --
   // store them in label._screen so HUD can use them after pop()
   for (let L of labels) {
-    // screenX/screenY expect world coords (they return coordinates in canvas pixels; origin at top-left)
-    // compute while current modelView includes our camera transforms
-    let sx = screenX(L.x, L.y, L.z);
-    let sy = screenY(L.x, L.y, L.z);
-    // also compute visibility by projecting z (approx): if behind camera, mark invisible.
-    // p5 doesn't expose depth easily here, but we can do simple near-plane check by projecting then testing
-    L._screen.x = sx;
-    L._screen.y = sy;
-    L._screen.visible = true;
+    // Use robust worldToScreen that reads current renderer matrices
+    const s = worldToScreen(L.x, L.y, L.z);
+    L._screen.x = s.x;
+    L._screen.y = s.y;
+    // visible if within clip space (-1..1) in z (we use s.z)
+    L._screen.visible = isFinite(s.z) && s.z > -1 && s.z < 1;
   }
 
   // draw map layers (same order as раньше)
@@ -323,12 +382,9 @@ function draw() {
   // -------------------------
   // 2D HUD render for labels (icons + text)
   // -------------------------
-  // We draw the HUD in screen coordinates. screenX/screenY above return coordinates in pixels with origin at top-left.
-  // However in WEBGL p5, resetMatrix() sets the drawing origin back to center; so we translate(-width/2, -height/2)
-  // to match screenX/screenY coordinate system.
   push();
   resetMatrix();
-  // move origin to top-left to match screenX/screenY
+  // move origin to top-left to match pixel coordinates returned by worldToScreen
   translate(-width / 2, -height / 2);
 
   // disable depth test so HUD always on top
@@ -351,19 +407,13 @@ function draw() {
 
     // icon
     if (L.icon && L.icon.width) {
-      // choose a screen size for icons (we can scale with zoom if you want)
-      // keep icons constant screen size (don't multiply by zoom)
       let iw = L.icon.width / 1.5;
       let ih = L.icon.height / 1.5;
       imageMode(CORNER);
-      // image expects top-left coords when CORNER; screenX,Y returns pixel center coords — for center we subtract half-size
       image(L.icon, sx - iw / 2, sy - ih / 2, iw, ih);
-      // text under icon (only at sufficient zoom)
       if (zoom >= 2) {
-        fill(L.clr.r, L.clr.g, L.clr.b);
+        fill(0, 160);
         textSize(17);
-        // draw shadow / outline for readability
-        fill(0, 80);
         text(L.name, sx + 1, sy + ih / 2 + 3 + 1);
         fill(L.clr.r, L.clr.g, L.clr.b);
         text(L.name, sx, sy + ih / 2 + 3);
