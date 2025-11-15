@@ -182,17 +182,6 @@ class Label {
       case "station": return {r:255,g:255,b:255};
       case "park": case "stadium": return {r:59,g:156,b:88};
       case "metro": return {r:83,g:178,b:62};
-      case "restaurant": return {r:255, g: 0, b: 0};
-      case "school": return {r:0, g: 255, b: 0};
-      case "hotel": return {r:0, g:0, b:255};
-      case "bank": return {r:0, g:0, b:0};
-      case "police": return {r:255, g:255, b:255};
-      case "factory": return {r:125, g:125, b:125};
-      case "airport": return {r:255, g:255, b:0};
-      case "stadium": return {r:0, g:255, b:255};
-      case "theater": return {r:255, g:0, b:255};
-      case "university": return {r:128, g:128, b:128};
-      case "gym": return {r:255, g:100, b:100};
       default: return {r:255,g:255,b:255};
     }
   }
@@ -221,7 +210,7 @@ class Label {
 // preload - load JSON and icons mentioned in labels
 // -----------------------------
 function preload() {
-  font = loadFont("data/YandexSansText-Medium.ttf");
+  font = loadFont("data/YandexSansText-Bold.ttf");
   json_alleys_root = loadJSON('data/alleys.json');
   json_buildings_root = loadJSON('data/buildings.json');
   json_detalised_buildings_root = loadJSON('data/detalised_buildings.json');
@@ -255,139 +244,6 @@ function preload() {
 }
 
 // -----------------------------
-// setup
-// -----------------------------
-function setup() {
-  createCanvas(windowWidth, windowHeight, WEBGL);
-  noStroke();
-  textFont(font);
-  textSize(16);
-  textAlign(CENTER, CENTER);
-  // parse jsons into objects
-  read_json_alleys();
-  read_json_buildings();
-  read_json_detalised_buildings();
-  read_json_fields();
-  read_json_governments();
-  read_json_green_areas();
-  read_json_hospitals();
-  read_json_labels();
-  read_json_parkings();
-  read_json_railways();
-  read_json_roads();
-  read_json_underlays();
-  read_json_waters();
-}
-
-// -----------------------------
-// draw loop
-// -----------------------------
-function draw() {
-  background(43, 52, 85);
-  zoom = constrain(zoom, 0.2, 8.0);
-
-  // -------------------------
-  // 3D scene render
-  // -------------------------
-  push();
-  translate(0, 100, 0);
-  scale(zoom);
-  rotateX(angleX);
-  rotateY(angleY);
-  translate(offsetX, 0, offsetZ);
-
-  // compute screen positions for labels
-  for (let L of labels) {
-    const s = worldToScreen(L.x, L.y, L.z);
-    L._screen.x = s.x;
-    L._screen.y = s.y;
-    L._screen.visible = isFinite(s.z) && s.z > -1 && s.z < 1;
-  }
-
-  // draw map layers
-  drawUnderlays();
-  drawGreenAreas();
-  drawWaters();
-  drawParkings();
-  drawAlleys();
-  drawRailways();
-  drawRoads();
-  drawFields();
-  drawBuildings();
-  drawDetalisedBuildings();
-  drawHospitals();
-  drawGovernments();
-
-  pop(); 
-
-  // -------------------------
-  // 2D HUD render for labels (icons + text)
-  // -------------------------
-  push();
-  resetMatrix();
-  translate(-width / 2, -height / 2);
-
-  if (drawingContext && drawingContext.disable) {
-    try { drawingContext.disable(drawingContext.DEPTH_TEST); } catch (e) {}
-  }
-
-  for (let L of labels) {
-    if (!L._screen || !L._screen.visible) continue;
-    if (L.level > zoom) continue;
-
-    let sx = L._screen.x;
-    let sy = L._screen.y;
-
-    if (!isFinite(sx) || !isFinite(sy)) continue;
-
-    if (L.icon && L.icon.width) {
-      let iw = L.icon.width / 1.5;
-      let ih = L.icon.height / 1.5;
-      imageMode(CORNER);
-      image(L.icon, sx - iw / 2, sy - ih / 2, iw, ih);
-      if (zoom >= 2) {
-        fill(0, 160);
-        textSize(17);
-        text(L.name, sx + 1, sy + ih / 2 + 3 + 1);
-        fill(L.clr.r, L.clr.g, L.clr.b);
-        text(L.name, sx, sy + ih / 2 + 3);
-      }
-    } else {
-      fill(L.clr.r, L.clr.g, L.clr.b);
-      noStroke();
-      ellipse(sx, sy, 10, 10);
-      if (zoom >= 2) {
-        fill(255);
-        textSize(14);
-        text(L.name, sx, sy + 8);
-      }
-    }
-  }
-
-  if (drawingContext && drawingContext.enable) {
-    try { drawingContext.enable(drawingContext.DEPTH_TEST); } catch (e) {}
-  }
-
-  pop();
-}
-
-// -----------------------------
-// draw layer helpers
-// -----------------------------
-function drawUnderlays() { for (let u of underlays) if (u && u.show) u.show(); }
-function drawGreenAreas() { for (let g of green_areas) if (g && g.show) g.show(); }
-function drawWaters() { for (let w of waters) if (w && w.show) w.show(); }
-function drawParkings() { for (let p of parkings) if (p && p.show) p.show(); }
-function drawAlleys() { for (let a of alleys) if (a && a.show) a.show(); }
-function drawRailways() { for (let r of railways) if (r && r.show) r.show(); }
-function drawRoads() { for (let r of roads) if (r && r.show) r.show(); }
-function drawFields() { for (let f of fields) if (f && f.show) f.show(); }
-function drawBuildings() { for (let b of buildings) if (b && b.show) b.show(); }
-function drawDetalisedBuildings() { for (let d of detalised_buildings) if (d && d.show) d.show(); }
-function drawHospitals() { for (let h of hospitals) if (h && h.show) h.show(); }
-function drawGovernments() { for (let g of governments) if (g && g.show) g.show(); }
-
-// -----------------------------
 // JSON readers
 // -----------------------------
 function safeArr(root, key) {
@@ -396,4 +252,76 @@ function safeArr(root, key) {
   if (Array.isArray(root)) return root;
   for (let k in root) if (Array.isArray(root[k])) return root[k];
   return [];
+}
+
+function read_json_alleys() {
+  let arr = safeArr(json_alleys_root, 'alleys');
+  for (let alley of arr) {
+    let name = alley.name || "";
+    let pts = alley.points || [];
+    let points = pts.map(p => new Point(p[0], p[1], p[2]));
+    alleys.push(new Alley(name, points));
+  }
+}
+
+function read_json_buildings() {
+  let arr = safeArr(json_buildings_root, 'buildings');
+  for (let b of arr) {
+    let address = b.address || "";
+    let name = b.name || "";
+    let json_details = b.details || [];
+    let details = [];
+    for (let det of json_details) {
+      let down = (det.down_points || []).map(p => new Point(p[0], p[1] + 0.01, p[2]));
+      let up = (det.up_points || []).map(p => new Point(p[0], p[1], p[2]));
+      details.push(new Detail(down, up));
+    }
+    buildings.push(new Building(address, name, details));
+  }
+}
+
+function read_json_hospitals() {
+  let arr = safeArr(json_hospitals_root, 'hospitals');
+  for (let h of arr) {
+    let address = h.address || "";
+    let name = h.name || "";
+    let details = [];
+    for (let det of (h.details || [])) {
+      let down = (det.down_points || []).map(p => new Point(p[0], p[1] + 0.01, p[2]));
+      let up = (det.up_points || []).map(p => new Point(p[0], p[1], p[2]));
+      details.push(new Detail(down, up));
+    }
+    hospitals.push(new Hospital(address, name, details));
+  }
+}
+
+// Similarly, define the functions for other data (like fields, governments, etc.)
+function read_json_parkings() {
+  let arr = safeArr(json_parkings_root, 'parkings');
+  for (let pk of arr) {
+    let pts = (pk.points || []).map(p => new Point(p[0], p[1], p[2]));
+    parkings.push(new Parking(pts));
+  }
+}
+
+function read_json_governments() {
+  let arr = safeArr(json_governments_root, 'governments');
+  for (let g of arr) {
+    let address = g.address || "";
+    let name = g.name || "";
+    let details = [];
+    for (let det of (g.details || [])) {
+      let down = (det.down_points || []).map(p => new Point(p[0], p[1] + 0.01, p[2]));
+      let up = (det.up_points || []).map(p => new Point(p[0], p[1], p[2]));
+      details.push(new Detail(down, up));
+    }
+    governments.push(new Government(address, name, details));
+  }
+}
+
+// -----------------------------
+// window resize
+// -----------------------------
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
 }
