@@ -209,6 +209,7 @@ class Label {
 // preload - load JSON and icons referenced in labels
 // -----------------------------
 function preload() {
+  font = loadFont("data/YandexSansText-Medium.ttf");
   // load JSONs
   json_alleys_root = loadJSON('data/alleys.json');
   json_buildings_root = loadJSON('data/buildings.json');
@@ -245,7 +246,9 @@ function preload() {
 function setup() {
   createCanvas(windowWidth, windowHeight, WEBGL);
   noStroke();
-
+  textFont(font);
+  textSize(16);
+  textAlign(CENTER, CENTER);
   // parse jsons into objects
   read_json_alleys();
   read_json_buildings();
